@@ -176,6 +176,7 @@ function VimCmdLineStart_Nvim(app)
         exe 'runtime syntax/cmdlineoutput_' . a:app . '.vim'
     endif
     normal! G
+    sleep 100m
     exe "sbuffer " . edbuf
     stopinsert
 endfunction
