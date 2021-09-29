@@ -13,10 +13,16 @@ function! StataSourceLines(lines)
     call VimCmdLineSendCmd("do " . g:cmdline_tmp_dir . "/lines.do")
 endfunction
 
+function! StataLineSend()
+    let line = substitute(getline("."), "[ \t ]\/[\/\*].*$", "", "")
+    call VimCmdLineSendCmd(line)
+endfunction
+
 let b:cmdline_nl = "\n"
 let b:cmdline_app = "stata-se"
-let b:cmdline_quit_cmd = "exit"
+let b:cmdline_quit_cmd = "exit, clear"
 let b:cmdline_source_fun = function("StataSourceLines")
+let b:cmdline_send = function("StataLineSend")
 let b:cmdline_send_empty = 0
 let b:cmdline_filetype = "stata"
 
