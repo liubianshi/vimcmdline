@@ -28,7 +28,7 @@ function! PythonSourceLines(lines)
     elseif exists("b:cmdline_jupyter")
 	" Use bracketed paste
 	let a:block = join(a:lines, b:cmdline_nl)
-python << endpython
+pythonx << endpython
 # Allow inner blocks to be run without problem (cpaste-like)
 import textwrap, json
 block = vim.eval('a:block')
@@ -39,26 +39,37 @@ endpython
         call VimCmdLineSendCmd("\e[201~")
 	call VimCmdLineSendCmd(b:cmdline_nl)
     else
-        if a:lines[len(a:lines)-1] == ''
-            call VimCmdLineSendCmd(join(a:lines, b:cmdline_nl))
-        else
-            call VimCmdLineSendCmd(join(add(a:lines, ''), b:cmdline_nl))
-        endif
+        let lns = ''
+        let isdefclass = 0
+        for aline in a:lines
+            if isdefclass && aline =~ '^\S'
+                let lns = lns . b:cmdline_nl
+                let isdefclass = 0
+            endif
+            if aline !~ '^\s*$'
+                if aline =~ '^def ' || aline =~ '^class '
+                    let isdefclass = 1
+                endif
+                let lns = lns . b:cmdline_nl . aline
+            endif
+        endfor
+        call VimCmdLineSendCmd(lns . b:cmdline_nl)
     endif
 endfunction
 
 function! PythonSendLine()
     let line = getline(".")
-    if line =~ '^class ' || line =~ '^def '
+    let haselse = line =~ '^if ' || line =~ '^while '
+    if line =~ '^class ' || line =~ '^def ' || line =~ '^while ' || line =~ '^if '
         let lines = []
         let idx = line('.')
         while idx <= line('$')
-            if line != ''
+            if line !~ '^\s*$'
                 let lines += [line]
             endif
             let idx += 1
             let line = getline(idx)
-            if line =~ '^\S'
+            if line =~ '^\S' && !(haselse && line =~ '^else:\s*$')
                 break
             endif
         endwhile
