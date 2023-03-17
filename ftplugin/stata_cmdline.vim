@@ -29,6 +29,4 @@ let b:cmdline_filetype = "stata"
 if !exists("g:cmdline_map_start")
     let g:cmdline_map_start = "<LocalLeaderls>"
 endif
-exe 'nmap <buffer><silent> ' . g:cmdline_map_start . ' :call VimCmdLineStartApp()<CR>'
-
-call cmdline#StartApp("stata")
+exe 'nmap <buffer><silent> ' . g:cmdline_map_start . ' :call cmdline#StartApp()<CR>'
