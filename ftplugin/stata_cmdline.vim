@@ -10,12 +10,12 @@ endif
 
 function! StataSourceLines(lines)
     call writefile(a:lines, g:cmdline_tmp_dir . "/lines.do")
-    call VimCmdLineSendCmd("do " . g:cmdline_tmp_dir . "/lines.do")
+    call cmdline#SendCmd("do " . g:cmdline_tmp_dir . "/lines.do")
 endfunction
 
 function! StataLineSend()
     let line = substitute(getline("."), "[ \t ]\/[\/\*].*$", "", "")
-    call VimCmdLineSendCmd(line)
+    call cmdline#SendCmd(line)
 endfunction
 
 let b:cmdline_nl = "\n"
@@ -26,7 +26,9 @@ let b:cmdline_send = function("StataLineSend")
 let b:cmdline_send_empty = 0
 let b:cmdline_filetype = "stata"
 
+if !exists("g:cmdline_map_start")
+    let g:cmdline_map_start = "<LocalLeaderls>"
+endif
 exe 'nmap <buffer><silent> ' . g:cmdline_map_start . ' :call VimCmdLineStartApp()<CR>'
 
-call VimCmdLineSetApp("stata")
-
+call cmdline#StartApp("stata")
