@@ -15,6 +15,8 @@
 " Author: Jakson Alves de Aquino <jalvesaq@gmail.com>
 "==========================================================================
 
+let s:plugin_home = expand("<sfile>:h:h")
+
 function cmdline#Init()
     " Set option
     if has("nvim")
@@ -28,9 +30,14 @@ function cmdline#Init()
     let g:cmdline_esc_term = get(g:, 'cmdline_esc_term', 1)
     let g:cmdline_term_width = get(g:, 'cmdline_term_width', 40)
     let g:cmdline_term_height = get(g:, 'cmdline_term_height', 15)
-    let g:cmdline_tmp_dir = get(g:, 'cmdline_tmp_dir', '/tmp/cmdline_' . localtime() . '_' . $USER)
+    if has("win32") && isdirectory($TMP)
+        let g:cmdline_tmp_dir = get(g:, 'cmdline_tmp_dir', $TMP . '/cmdline_' . localtime() . '_' . $USER)
+    else
+        let g:cmdline_tmp_dir = get(g:, 'cmdline_tmp_dir', '/tmp/cmdline_' . localtime() . '_' . $USER)
+    endif
     let g:cmdline_outhl = get(g:, 'cmdline_outhl', 1)
     let g:cmdline_auto_scroll = get(g:, 'cmdline_auto_scroll', 1)
+    let g:cmdline_actions = get(g:, 'cmdline_actions', {})
 
     " Internal variables
     let g:cmdline_job = {}
@@ -65,6 +72,21 @@ function cmdline#Init()
     if !exists("g:cmdline_map_quit")
         let g:cmdline_map_quit = "<LocalLeader>q"
     endif
+endfunction
+
+function! cmdline#QuartoLng()
+    if &filetype != 'quarto'
+        return &filetype
+    endif
+
+    let chunkline = search("^[ \t]*```[ ]*{", "bncW")
+    let docline = search("^[ \t]*```$", "bncW")
+    if chunkline <= docline
+        return 'none'
+    endif
+    let lng = substitute(substitute(getline(chunkline), '.*{', '', ''), '\W.*', '', '')
+    exe 'source ' . s:plugin_home . '/ftplugin/' . lng . '_cmdline.vim'
+    return lng
 endfunction
 
 " Skip empty lines
@@ -119,7 +141,6 @@ function cmdline#Start_ExTerm(app)
         call writefile(cnflines, tconf)
     endif
 
-
     let cmd = printf(g:cmdline_external_term_cmd,
                 \ 'tmux -2 -f "' . tconf . '" -L VimCmdLine new-session -s ' .
                 \ g:cmdline_tmuxsname[b:cmdline_filetype] . ' ' . a:app)
@@ -156,7 +177,7 @@ function cmdline#Start_Tmux(app)
 endfunction
 
 " Run the interpreter in a Neovim terminal buffer
-function cmdline#Start_Nvim(app)
+function cmdline#Start_Nvim(app, ft)
     let edbuf = bufname("%")
     let thisft = b:cmdline_filetype
     if has_key(g:cmdline_job, b:cmdline_filetype) && g:cmdline_job[b:cmdline_filetype]
@@ -181,8 +202,11 @@ function cmdline#Start_Nvim(app)
     if g:cmdline_esc_term
         tnoremap <buffer> <Esc> <C-\><C-n>
     endif
-    if g:cmdline_outhl
-        exe 'runtime syntax/cmdlineoutput_' . a:app . '.vim'
+    if ((type(g:cmdline_outhl) == v:t_number || type(g:cmdline_outhl) == v:t_bool) && g:cmdline_outhl) ||
+                \ (type(g:cmdline_outhl) == v:t_dict &&
+                \ (!has_key(g:cmdline_outhl, a:ft) ||
+                \ (has_key(g:cmdline_outhl, a:ft) && g:cmdline_outhl[a:ft])))
+        exe 'runtime syntax/cmdlineoutput_' . a:ft . '.vim'
     endif
     normal! G
     sleep 100m
@@ -190,10 +214,10 @@ function cmdline#Start_Nvim(app)
     stopinsert
 endfunction
 
-function cmdline#CreateMaps()
+function cmdline#CreateMaps(lng)
     exe 'nmap <silent><buffer> ' . g:cmdline_map_send . ' :call cmdline#SendLine()<CR>'
     exe 'nmap <silent><buffer> ' . g:cmdline_map_send_and_stay . ' :call cmdline#SendLineAndStay()<CR>'
-    exe 'nmap <silent><buffer> ' . g:cmdline_map_send_motion . ' :set opfunc=VimCmdLineSendMotion<CR>g@'
+    exe 'nmap <silent><buffer> ' . g:cmdline_map_send_motion . ' :set opfunc=cmdline#SendMotion<CR>g@'
     exe 'vmap <silent><buffer> ' . g:cmdline_map_send .
                 \ ' <Esc>:call cmdline#SendSelection()<CR>'
     if exists("b:cmdline_source_fun")
@@ -207,23 +231,36 @@ function cmdline#CreateMaps()
     if exists("b:cmdline_quit_cmd")
         exe 'nmap <silent><buffer> ' . g:cmdline_map_quit . ' :call cmdline#Quit("' . b:cmdline_filetype . '")<CR>'
     endif
+
+    for ft in keys(g:cmdline_actions)
+        if ft == a:lng
+            for amap in g:cmdline_actions[ft]
+                exe 'nmap <silent><buffer> ' . amap[0] . ' :call cmdline#Action("' . substitute(amap[1], '"', '\\"', 'g') . '")<CR>'
+            endfor
+        endif
+    endfor
 endfunction
 
 " Common procedure to start the interpreter
 function cmdline#StartApp()
+    let lng = cmdline#QuartoLng()
+    if lng == 'none'
+        return
+    endif
+
     " Ensure that the necessary variables were created
     if !exists("g:cmdline_job")
         call cmdline#Init()
     endif
 
-    call cmdline#SetApp(&filetype)
+    call cmdline#SetApp(lng)
 
     if !exists("b:cmdline_app")
         echomsg 'There is no application defined to be executed for file of type "' . b:cmdline_filetype . '".'
         return
     endif
 
-    call cmdline#CreateMaps()
+    call cmdline#CreateMaps(lng)
 
     if !isdirectory(g:cmdline_tmp_dir)
         call mkdir(g:cmdline_tmp_dir)
@@ -233,7 +270,7 @@ function cmdline#StartApp()
         call cmdline#Start_ExTerm(b:cmdline_app)
     else
         if g:cmdline_in_buffer
-            call cmdline#Start_Nvim(b:cmdline_app)
+            call cmdline#Start_Nvim(b:cmdline_app, lng)
         else
             call cmdline#Start_Tmux(b:cmdline_app)
         endif
@@ -288,10 +325,15 @@ endfunction
 
 " Send current line to the interpreter and go down to the next non empty line
 function cmdline#SendLine()
+    if cmdline#QuartoLng() == 'none'
+        return
+    endif
+
     if exists('*b:cmdline_send')
         call b:cmdline_send()
         return
     endif
+
     let line = getline(".")
     if strlen(line) > 0 || b:cmdline_send_empty
         call cmdline#SendCmd(line)
@@ -301,25 +343,45 @@ endfunction
 
 " Send current line to the interpreter and but keep cursor on current line
 function cmdline#SendLineAndStay()
+    if cmdline#QuartoLng() == 'none'
+        return
+    endif
+
     let line = getline(".")
     if strlen(line) > 0 || b:cmdline_send_empty
         call cmdline#SendCmd(line)
     endif
 endfunction
 
+function cmdline#SelectionToString()
+    try
+        let a_orig = @a
+        silent! normal! gv"ay
+        return @a
+    finally
+        let @a = a_orig
+    endtry
+endfunction
+
 function cmdline#SendSelection()
+    if cmdline#QuartoLng() == 'none'
+        return
+    endif
+
     if line("'<") == line("'>")
-        let i = col("'<") - 1
-        let j = col("'>") - i
-        let l = getline("'<")
-        let line = strpart(l, i, j)
+        let line = cmdline#SelectionToString()
         call cmdline#SendCmd(line)
     elseif exists("b:cmdline_source_fun")
-        call b:cmdline_source_fun(getline("'<", "'>"))
+        let lines = split(cmdline#SelectionToString(), "\n")
+        call b:cmdline_source_fun(lines)
     endif
 endfunction
 
 function cmdline#SendParagraph()
+    if cmdline#QuartoLng() == 'none'
+        return
+    endif
+
     let i = line(".")
     let c = col(".")
     let max = line("$")
@@ -396,8 +458,25 @@ function cmdline#SendMBlock()
     call b:cmdline_source_fun(lines)
 endfunction
 
+function cmdline#Action(fmt)
+    if cmdline#QuartoLng() == 'none'
+        return
+    endif
+
+    if a:fmt =~ '%s'
+        let cmd = printf(a:fmt, expand('<cword>'))
+    else
+        let cmd = a:fmt
+    endif
+    call cmdline#SendCmd(cmd)
+endfunction
+
 " Quit the interpreter
 function cmdline#Quit(ftype)
+    if cmdline#QuartoLng() == 'none'
+        return
+    endif
+
     if exists("b:cmdline_quit_cmd")
         call cmdline#SendCmd(b:cmdline_quit_cmd)
 

@@ -17,7 +17,8 @@ Author: Jakson A. Aquino <jalvesaq@gmail.com>
         Width of interpreter window or pane               |cmdline_term_width|
         Temporary directory                                  |cmdline_tmp_dir|
         Keep the cursor at the end of terminal (nvim)    |cmdline_auto_scroll|
-	Set the application to run as interpreter                |cmdline_app|
+        Set the application to run as interpreter                |cmdline_app|
+        Set actions for each interpreter                     |cmdline_actions|
         Run interpreter in external terminal       |cmdline_external_term_cmd|
 
 
@@ -158,8 +159,17 @@ put in your |vimrc|:
 If you want to completely disable the colorizing of the interpreter output,
 put in your |vimrc|:
 >
- let cmdline_outhl = 1
+ let cmdline_outhl = 0
 <
+Option `cmdline_outhl` can also be a dictionary where you indicate for each
+file type whether it should have the output of its interpreter highlighted
+or not. Example:
+>
+ let cmdline_outhl = {'r': 0} " R package colorout is better
+<
+By default, all file types with a corresponding `syntax/cmdlineoutput_.vim`
+script will be highlighted.
+
 
 3.3 Other options~
 							      *cmdline_vsplit*
@@ -219,18 +229,46 @@ value, as in the example:
  let cmdline_app['ruby']   = 'pry'
  let cmdline_app['sh']     = 'bash'
 <
-The same example for |init.lua|:
+Example for |init.lua|:
 >
  vim.g.cmdline_app = {
-     ruby = 'pry',
-     sh   = 'bash'
+     sh = 'bash',
+     r = 'ssh -t user@remote-machine R --no-save',
+     python = '~/.py3env/bin/python3',
  }
 <
+							     *cmdline_actions*
+You cand set special commands to be sent to the interpreters. Examples for R
+and Python (for |init.lua|):
+>
+ vim.g.cmdline_actions = {
+     r = {
+         {'<LocalLeader>l', 'ls()'},
+         {'<LocalLeader>s', 'summary(%s)'},
+         {'<LocalLeader>r', 'print(%s)'},
+         {'<LocalLeader>t', 'str(%s)'},
+         {'<LocalLeader>h', 'help(%s)'},
+         {'<LocalLeader>a', 'args(%s)'},
+     },
+     python = {
+         {'<LocalLeader>l', 'locals()'},
+         {'<LocalLeader>g', 'globals()'},
+         {'<LocalLeader>p', 'print(%s)'},
+         {'<LocalLeader>t', 'type(%s)'},
+         {'<LocalLeader>d', 'dir(%s)'},
+     }
+ }
+<
+The `cmdline_actions` variable is a dictionary. Each item has a 'filetype' as
+key and has two elements: the key combination and the command to be sent to
+the interpreter. The string "%s" is replaced with the word under cursor (the
+result of the Vim command `expand('<cword>')`).
+
+						   *cmdline_external_term_cmd*
 If you want to run the interpreter in an external terminal emulator, you have
 to define in your |vimrc| the command to run it, as in the examples:
 >
- let cmdline_external_term_cmd = "gnome-terminal -e '%s'"
- let cmdline_external_term_cmd = "xterm -e '%s' &"
+ let cmdline_external_term_cmd = "gnome-terminal -- '%s'"
  let cmdline_external_term_cmd = 'kitty %s &'
 <
 where `%s` will be replaced with the terminal command required to run the REPL
